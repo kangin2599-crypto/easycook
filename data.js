@@ -1,41 +1,51 @@
-// Easy Cook - 데이터 및 기본 설정 파일
+export default {
+  async fetch(request, env) {
+    // CORS 헤더 설정 (내 웹사이트에서 들어오는 요청 허용)
+    const corsHeaders = {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    };
 
-// 1. 기본 양념 목록
-const DEFAULT_CONDIMENTS = [
-    { id: "salt", name: "소금" },
-    { id: "sugar", name: "설탕" },
-    { id: "soy_sauce", name: "간장" },
-    { id: "gochujang", name: "고추장" },
-    { id: "doenjang", name: "된장" },
-    { id: "oil", name: "식용유" },
-    { id: "garlic", name: "다진 마늘" },
-    { id: "sesame_oil", name: "참기름" },
-    { id: "pepper", name: "후추" },
-    { id: "ketchup", name: "케첩" }
-];
+    if (request.method === "OPTIONS") {
+      return new Response(null, { headers: corsHeaders });
+    }
 
-// 2. 보유 조리 도구 목록
-const DEFAULT_APPLIANCES = [
-    { id: "stove", name: "가스/인덕션", checked: true },
-    { id: "microwave", name: "전자레인지", checked: false },
-    { id: "airfryer", name: "에어프라이어", checked: false },
-    { id: "oven", name: "오븐", checked: false }
-];
+    if (request.method !== "POST") {
+      return new Response("Method Not Allowed", { status: 405 });
+    }
 
-// 3. AI 프롬프트 생성 함수
-function generatePrompt(condiments, appliances) {
-    return `
-너는 자취생 및 1인 가구를 위한 Easy Cook의 AI 셰프야.
-사진 속에 있는 식재료들을 정확하게 인식해 줘.
+    try {
+      const body = await request.json();
+      
+      // Cloudflare 환경 변수에 저장된 Gemini API Key 불러오기
+      const apiKey = env.GEMINI_API_KEY;
 
-[사용자 보유 상태]
-- 보유 양념/조미료: ${condiments || '없음'}
-- 보유 조리 도구: ${appliances || '가스레인지'}
+      if (!apiKey) {
+        return new Response(JSON.stringify({ error: "API Key가 설정되지 않았습니다." }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
 
-[요청 사항]
-1. 사진 속 식재료 목록을 파악해서 알려줘.
-2. 사진의 식재료와 보유한 양념/도구만 활용해서 만들 수 있는 현실적인 요리 레시피 2가지를 추천해 줘.
-3. 추가로 사야 하는 재료는 없거나 최소화하고, 필수 양념이 부족하면 대체할 수 있는 팁을 적어줘.
-4. 조리 순서는 번호를 붙여 알기 쉽게 설명해 줘.
-`;
-}
+      // Gemini 1.5 Flash API 호출
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+
+      const data = await response.json();
+
+      return new Response(JSON.stringify(data), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+
+    } catch (err) {
+      return new Response(JSON.stringify({ error: err.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+  }
+};
